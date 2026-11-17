@@ -8,9 +8,11 @@ target_sources(app PRIVATE
   src/main.c
   src/vcp_vol_renderer.c
   src/bap_unicast_sr.c
-  src/ccp_call_ctrl.c
-  src/mcp_ctlr.c
 )
+
+target_sources_ifdef(CONFIG_AUDIO app PRIVATE src/audio_playback.c)
+target_sources_ifdef(CONFIG_BT_TBS_CLIENT_GTBS app PRIVATE src/ccp_call_ctrl.c)
+target_sources_ifdef(CONFIG_BT_MCC app PRIVATE src/mcp_ctlr.c)
 
 target_sources_ifdef(CONFIG_TMAP_PERIPHERAL_DUO app PRIVATE
   src/csip_set_member.c

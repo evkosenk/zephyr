@@ -1,0 +1,29 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	chosen {
+		zephyr,bt-hci = &ncp_hci;
+	};
+};
+
+&lpuart2 {
+	current-speed = <921600>;
+	pinctrl-0 = <&pinmux_lpuart2_flowcontrol>;
+	hw-flow-control;
+	status = "okay";
+
+	ncp: ncp {
+		compatible = "silabs,ncp";
+
+		ncp_hci: bt-hci {
+			compatible = "silabs,ncp-hci";
+		};
+	};
+};
+
+&bt_hci_uart {
+	status = "disabled";
+};

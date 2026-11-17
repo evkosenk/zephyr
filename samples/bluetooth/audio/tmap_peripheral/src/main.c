@@ -37,8 +37,12 @@
 #include "tmap_peripheral.h"
 
 static struct bt_conn *default_conn;
+#if defined(CONFIG_BT_TBS_CLIENT_GTBS)
 static struct k_work_delayable call_terminate_set_work;
+#endif
+#if defined(CONFIG_BT_MCC)
 static struct k_work_delayable media_pause_set_work;
+#endif
 
 static uint8_t unicast_server_addata[] = {
 	BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL),    /* ASCS UUID */
@@ -59,8 +63,10 @@ static uint8_t tmap_addata[] = {
 };
 
 static uint8_t csis_rsi_addata[BT_CSIP_RSI_SIZE];
+#if defined(CONFIG_BT_TBS_CLIENT_GTBS) || defined(CONFIG_BT_MCC)
 static bool peer_is_cg;
 static bool peer_is_ums;
+#endif
 
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
@@ -93,8 +99,10 @@ void tmap_discovery_complete(enum bt_tmap_role peer_role, struct bt_conn *conn, 
 		return;
 	}
 
+#if defined(CONFIG_BT_TBS_CLIENT_GTBS) || defined(CONFIG_BT_MCC)
 	peer_is_cg = (peer_role & BT_TMAP_ROLE_CG) != 0;
 	peer_is_ums = (peer_role & BT_TMAP_ROLE_UMS) != 0;
+#endif
 	printk("TMAP discovery done\n");
 	k_sem_give(&sem_discovery_done);
 }
@@ -186,6 +194,7 @@ static const struct bt_le_ext_adv_cb adv_cb = {
 #endif /* CONFIG_BT_PRIVACY && CONFIG_BT_CSIP_SET_MEMBER */
 };
 
+#if defined(CONFIG_BT_TBS_CLIENT_GTBS)
 static void audio_timer_timeout(struct k_work *work)
 {
 	int err = ccp_terminate_call();
@@ -196,7 +205,9 @@ static void audio_timer_timeout(struct k_work *work)
 		printk("Error sending call terminate command!\n");
 	}
 }
+#endif
 
+#if defined(CONFIG_BT_MCC)
 static void media_play_timeout(struct k_work *work)
 {
 	int err = mcp_send_cmd(BT_MCS_OPC_PAUSE);
@@ -207,6 +218,7 @@ static void media_play_timeout(struct k_work *work)
 		printk("Error sending pause command!\n");
 	}
 }
+#endif
 
 int main(void)
 {
@@ -221,8 +233,12 @@ int main(void)
 
 	printk("Bluetooth initialized\n");
 
+#if defined(CONFIG_BT_TBS_CLIENT_GTBS)
 	k_work_init_delayable(&call_terminate_set_work, audio_timer_timeout);
+#endif
+#if defined(CONFIG_BT_MCC)
 	k_work_init_delayable(&media_pause_set_work, media_play_timeout);
+#endif
 
 	printk("Initializing TMAP and setting role\n");
 	err = bt_tmap_register(BT_TMAP_ROLE_CT | BT_TMAP_ROLE_UMR);
@@ -289,18 +305,23 @@ int main(void)
 	err = k_sem_take(&sem_discovery_done, K_FOREVER);
 	__ASSERT_NO_MSG(err == 0);
 
+#if defined(CONFIG_BT_TBS_CLIENT_GTBS)
 	err = ccp_call_ctrl_init(default_conn);
 	if (err != 0) {
 		return err;
 	}
 	printk("CCP initialized\n");
+#endif
 
+#if defined(CONFIG_BT_MCC)
 	err = mcp_ctlr_init(default_conn);
 	if (err != 0) {
 		return err;
 	}
 	printk("MCP initialized\n");
+#endif
 
+#if defined(CONFIG_BT_TBS_CLIENT_GTBS)
 	if (peer_is_cg) {
 		/* Initiate a call with CCP */
 		err = ccp_originate_call();
@@ -310,7 +331,9 @@ int main(void)
 		/* Start timer to send terminate call command */
 		k_work_schedule(&call_terminate_set_work, K_MSEC(2000));
 	}
+#endif
 
+#if defined(CONFIG_BT_MCC)
 	if (peer_is_ums) {
 		/* Play media with MCP */
 		err = mcp_send_cmd(BT_MCS_OPC_PLAY);
@@ -326,6 +349,7 @@ int main(void)
 			printk("failed to take sem_disconnected (err %d)\n", err);
 		}
 	}
+#endif
 
 	return 0;
 }

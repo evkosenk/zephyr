@@ -36,13 +36,41 @@
 #include <zephyr/sys/util_macro.h>
 #include <zephyr/toolchain.h>
 
+#if defined(CONFIG_AUDIO)
+#include "audio_playback.h"
+#else
+static inline int audio_playback_init(void)
+{
+	return 0;
+}
+
+static inline int audio_playback_configure(const struct bt_audio_codec_cfg *codec_cfg)
+{
+	ARG_UNUSED(codec_cfg);
+	return 0;
+}
+
+static inline void audio_playback_recv(const struct bt_iso_recv_info *info, struct net_buf *buf)
+{
+	ARG_UNUSED(info);
+	ARG_UNUSED(buf);
+}
+
+static inline void audio_playback_start(void)
+{
+}
+
+static inline void audio_playback_stop(void)
+{
+}
+#endif
 #include "tmap_peripheral.h"
 
 static const struct bt_audio_codec_cap lc3_codec_cap =
 	BT_AUDIO_CODEC_CAP_LC3(BT_AUDIO_CODEC_CAP_FREQ_16KHZ | BT_AUDIO_CODEC_CAP_FREQ_32KHZ |
 				       BT_AUDIO_CODEC_CAP_FREQ_48KHZ,
 			       BT_AUDIO_CODEC_CAP_DURATION_7_5 | BT_AUDIO_CODEC_CAP_DURATION_10,
-			       BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(2), 30, 155u, 1u,
+			       BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(1U, 2U), 30, 155u, 1u,
 			       (AVAILABLE_SINK_CONTEXT | AVAILABLE_SOURCE_CONTEXT));
 
 static struct bt_conn *default_conn;
@@ -160,6 +188,14 @@ static int lc3_config(struct bt_conn *conn, const struct bt_bap_ep *ep, enum bt_
 	if (dir == BT_AUDIO_DIR_SOURCE) {
 		source_streams[configured_source_stream_count].stream = *stream;
 		configured_source_stream_count++;
+	} else {
+		int err = audio_playback_configure(codec_cfg);
+
+		if (err != 0) {
+			*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_CONF_UNSUPPORTED,
+						BT_BAP_ASCS_REASON_CODEC_DATA);
+			return err;
+		}
 	}
 
 	*pref = qos_pref;
@@ -327,12 +363,30 @@ static const struct bt_bap_unicast_server_cb unicast_server_cb = {
 static void stream_recv(struct bt_bap_stream *stream, const struct bt_iso_recv_info *info,
 			struct net_buf *buf)
 {
-	ARG_UNUSED(info);
+	ARG_UNUSED(stream);
+	audio_playback_recv(info, buf);
+}
 
-	if (buf->len != 0) {
-		printk("Incoming audio on stream %p len %u\n", stream, buf->len);
+static void stream_started(struct bt_bap_stream *stream)
+{
+	struct bt_bap_ep_info ep_info;
+	int err = bt_bap_ep_get_info(stream->ep, &ep_info);
+
+	if (err == 0 && ep_info.dir == BT_AUDIO_DIR_SINK) {
+		printk("Sink stream started; routing LC3 audio to WM8962\n");
+		audio_playback_start();
 	}
-	/* TODO: decode data (if applicable) */
+}
+
+static void stream_stopped(struct bt_bap_stream *stream, uint8_t reason)
+{
+	struct bt_bap_ep_info ep_info;
+	int err = bt_bap_ep_get_info(stream->ep, &ep_info);
+
+	ARG_UNUSED(reason);
+	if (err == 0 && ep_info.dir == BT_AUDIO_DIR_SINK) {
+		audio_playback_stop();
+	}
 }
 
 static void stream_enabled(struct bt_bap_stream *stream)
@@ -359,7 +413,9 @@ static void stream_enabled(struct bt_bap_stream *stream)
 
 static struct bt_bap_stream_ops stream_ops = {
 	.recv = stream_recv,
-	.enabled = stream_enabled
+	.enabled = stream_enabled,
+	.started = stream_started,
+	.stopped = stream_stopped,
 };
 
 static void connected(struct bt_conn *conn, uint8_t err)
@@ -405,6 +461,11 @@ int bap_unicast_sr_init(void)
 		.src_loc = true,
 	};
 	int err;
+
+	err = audio_playback_init();
+	if (err != 0) {
+		return err;
+	}
 
 	err = bt_pacs_register(&pacs_param);
 	if (err != 0) {
