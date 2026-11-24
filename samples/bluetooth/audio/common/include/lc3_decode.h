@@ -22,11 +22,12 @@
  * @param freq_hz           LC3 sample rate.
  * @param frame_duration_us LC3 frame duration.
  * @param chan_cnt          Number of channels (1 or 2).
+ * @param pcm_freq_hz       PCM output sample rate, or zero for the LC3 rate.
  *
  * @return 0 on success, negative errno otherwise.
  */
 int sample_bt_audio_lc3_decode_setup(uint32_t freq_hz, uint32_t frame_duration_us,
-				     uint8_t chan_cnt);
+				     uint8_t chan_cnt, uint32_t pcm_freq_hz);
 
 /**
  * @brief Decode one LC3 frame block into interleaved stereo PCM.

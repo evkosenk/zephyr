@@ -341,8 +341,10 @@ static void bringup_work_handler(struct k_work *work)
 	}
 
 	const struct sample_bt_audio_pcm_cfg *cfg = &local_cfg;
+	const uint32_t pcm_rate = IS_ENABLED(CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_48KHZ) ?
+				 48000U : cfg->freq_hz;
 
-	samples_per_frame = (uint32_t)(((uint64_t)cfg->freq_hz * (uint64_t)cfg->frame_duration_us) /
+	samples_per_frame = (uint32_t)(((uint64_t)pcm_rate * (uint64_t)cfg->frame_duration_us) /
 				       USEC_PER_SEC);
 	pcm_block_bytes = samples_per_frame * SAMPLE_BT_AUDIO_PCM_SINK_MAX_CHAN * sizeof(int16_t);
 	if (pcm_block_bytes > SAMPLE_BT_AUDIO_PCM_SINK_MAX_BLOCK_BYTES) {
@@ -354,7 +356,7 @@ static void bringup_work_handler(struct k_work *work)
 	active_cfg = *cfg;
 
 	err = sample_bt_audio_lc3_decode_setup(cfg->freq_hz, cfg->frame_duration_us,
-					       cfg->chan_cnt);
+					       cfg->chan_cnt, pcm_rate);
 	if (err != 0) {
 		LOG_ERR("LC3 decoder setup failed: %d", err);
 		return;
@@ -363,7 +365,7 @@ static void bringup_work_handler(struct k_work *work)
 	drain_sdu_fifo();
 
 	const struct sample_bt_audio_pcm_sink_cfg sink_cfg = {
-		.sample_rate_hz = cfg->freq_hz,
+		.sample_rate_hz = pcm_rate,
 		.frame_duration_us = cfg->frame_duration_us,
 		.channels = SAMPLE_BT_AUDIO_PCM_SINK_MAX_CHAN,
 		.bits = 16U,

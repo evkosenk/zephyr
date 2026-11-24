@@ -10,6 +10,10 @@ target_sources(app PRIVATE
   src/bap_unicast_sr.c
 )
 
+target_sources_ifdef(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE app PRIVATE
+  src/audio_capture.c
+)
+
 add_subdirectory(${ZEPHYR_BASE}/samples/bluetooth/audio/common
                  ${CMAKE_BINARY_DIR}/bt_audio_common)
 

@@ -59,3 +59,26 @@ tests:
     extra_configs:
       - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK=y
       - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_SINK_NONE=y
+  sample.bluetooth.audio.tmap_peripheral.rt1170.playback:
+    build_only: true
+    platform_allow:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    integration_platforms:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    extra_configs:
+      - CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE=n
+      - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX=n
+  sample.bluetooth.audio.tmap_peripheral.rt1170.duplex:
+    build_only: true
+    platform_allow:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    integration_platforms:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+  sample.bluetooth.audio.tmap_peripheral.rt1170.headset:
+    build_only: true
+    platform_allow:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    integration_platforms:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    extra_configs:
+      - CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_LEFT=y

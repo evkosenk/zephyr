@@ -34,11 +34,11 @@ struct lc3_decoder_ctx {
 static struct lc3_decoder_ctx decoders[SAMPLE_BT_AUDIO_PCM_SINK_MAX_CHAN];
 
 int sample_bt_audio_lc3_decode_setup(uint32_t freq_hz, uint32_t frame_duration_us,
-				     uint8_t chan_cnt)
+				     uint8_t chan_cnt, uint32_t pcm_freq_hz)
 {
 	for (uint8_t c = 0U; c < chan_cnt; c++) {
-		decoders[c].decoder = lc3_setup_decoder((int)frame_duration_us, (int)freq_hz, 0,
-							&decoders[c].mem);
+		decoders[c].decoder = lc3_setup_decoder((int)frame_duration_us, (int)freq_hz,
+							(int)pcm_freq_hz, &decoders[c].mem);
 		if (decoders[c].decoder == NULL) {
 			LOG_DBG("lc3_setup_decoder ch%u failed", c);
 			return -EINVAL;
