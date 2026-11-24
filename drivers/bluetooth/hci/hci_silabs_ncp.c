@@ -19,9 +19,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net_buf.h>
-#include <zephyr/spinlock.h>
 #include <zephyr/sys/byteorder.h>
-#include <zephyr/sys/slist.h>
 #include <zephyr/sys/util.h>
 
 #include "sl_cpc.h"
@@ -47,7 +45,7 @@ LOG_MODULE_REGISTER(hci_silabs_ncp, CONFIG_BT_HCI_DRIVER_LOG_LEVEL);
 
 /* Receive buffer handed to CPC, queued for delivery to the host once filled */
 struct hci_ncp_rx_slot {
-	sys_snode_t node;
+	void *fifo_reserved;
 	sl_cpc_buf_t buf;
 	uint8_t data[HCI_RX_MTU] __aligned(SL_CPC_BUF_MIN_ALIGNMENT);
 };
@@ -72,8 +70,7 @@ struct hci_ncp_data {
 	struct k_sem connected;
 	struct k_sem closed;
 	/* Received packets waiting for a host buffer, oldest first */
-	sys_slist_t rx_pending;
-	struct k_spinlock rx_lock;
+	struct k_fifo rx_pending;
 	struct k_work rx_work;
 	bool opened;
 	struct hci_ncp_rx_slot rx_slots[CONFIG_BT_HCI_SILABS_NCP_RX_COUNT];
@@ -177,6 +174,45 @@ static int hci_ncp_acl_recv(const uint8_t *data, size_t remaining, struct net_bu
 	return 0;
 }
 
+/* ISO packets are dropped when no host buffer is available so they do not
+ * block connection events or ACL packets queued behind them.
+ */
+static int hci_ncp_iso_recv(const uint8_t *data, size_t remaining, struct net_buf **out)
+{
+	struct bt_hci_iso_hdr hdr;
+	struct net_buf *buf;
+
+	if (remaining < sizeof(hdr)) {
+		LOG_ERR("Not enough data for ISO header");
+		return -EBADMSG;
+	}
+
+	memcpy(&hdr, data, sizeof(hdr));
+	data += sizeof(hdr);
+	remaining -= sizeof(hdr);
+	if (remaining != bt_iso_hdr_len(sys_le16_to_cpu(hdr.len))) {
+		LOG_ERR("ISO payload length mismatch");
+		return -EBADMSG;
+	}
+
+	buf = bt_buf_get_rx(BT_BUF_ISO_IN, K_NO_WAIT);
+	if (buf == NULL) {
+		LOG_DBG("No ISO buffer, dropping");
+		return -ENOBUFS;
+	}
+
+	net_buf_add_mem(buf, &hdr, sizeof(hdr));
+	if (net_buf_tailroom(buf) < remaining) {
+		LOG_ERR("Not enough room in ISO buffer");
+		net_buf_unref(buf);
+		return -EMSGSIZE;
+	}
+	net_buf_add_mem(buf, data, remaining);
+	*out = buf;
+
+	return 0;
+}
+
 /* Deliver one H4 packet to the host. Returns -ENOMEM when the host has no
  * buffer: the packet must be kept and delivered later. Any other outcome
  * means the CPC buffer can be returned.
@@ -203,6 +239,13 @@ static int hci_ncp_deliver(const struct device *dev, const uint8_t *payload, uin
 	case BT_HCI_H4_ACL:
 		ret = hci_ncp_acl_recv(payload, len, &buf);
 		break;
+	case BT_HCI_H4_ISO:
+		if (!IS_ENABLED(CONFIG_BT_ISO)) {
+			LOG_ERR("ISO packet without ISO support");
+			return -EBADMSG;
+		}
+		ret = hci_ncp_iso_recv(payload, len, &buf);
+		break;
 	default:
 		LOG_ERR("Unknown HCI packet type %u", h4_type);
 		return -EBADMSG;
@@ -215,36 +258,28 @@ static int hci_ncp_deliver(const struct device *dev, const uint8_t *payload, uin
 	return ret;
 }
 
-/* Deliver the pending packets in order, until the host runs out of buffers.
- * Runs in the CPC context and from rx_work, both on the work queue of the
- * co-processor.
+/* Deliver pending packets only from rx_work to serialize CPC RX and host-buffer
+ * release handling.
  */
 static void hci_ncp_rx_process(const struct device *dev)
 {
 	struct hci_ncp_data *data = dev->data;
 	struct hci_ncp_rx_slot *slot;
-	k_spinlock_key_t key;
-	sys_snode_t *node;
 	int ret;
 
 	while (true) {
-		key = k_spin_lock(&data->rx_lock);
-		node = sys_slist_peek_head(&data->rx_pending);
-		k_spin_unlock(&data->rx_lock, key);
-		if (!node || !data->opened) {
+		slot = k_fifo_peek_head(&data->rx_pending);
+		if (slot == NULL || !data->opened) {
 			return;
 		}
-		slot = CONTAINER_OF(node, struct hci_ncp_rx_slot, node);
 
 		ret = hci_ncp_deliver(dev, slot->buf.ptr, slot->buf.len);
 		if (ret == -ENOMEM) {
-			/* bt_buf_rx_freed_cb() resumes us */
+			/* bt_buf_rx_freed_cb() resumes us; keep the packet pending. */
 			return;
 		}
 
-		key = k_spin_lock(&data->rx_lock);
-		sys_slist_remove(&data->rx_pending, NULL, node);
-		k_spin_unlock(&data->rx_lock, key);
+		k_fifo_get(&data->rx_pending, K_NO_WAIT);
 		/* Give the buffer back to CPC */
 		sl_cpc_ep_push_recv_buf(&data->ep, &slot->buf);
 	}
@@ -283,17 +318,14 @@ static void hci_ncp_ep_event(sl_cpc_ep_t *ep, sl_cpc_ep_event_type_t type,
 	struct hci_ncp_data *data = dev->data;
 	struct hci_ncp_rx_slot *rx;
 	struct hci_ncp_tx_slot *tx;
-	k_spinlock_key_t key;
 
 	ARG_UNUSED(ep);
 
 	switch (type) {
 	case SL_CPC_EP_EVENT_RECV:
 		rx = CONTAINER_OF(event->recv.buf, struct hci_ncp_rx_slot, buf);
-		key = k_spin_lock(&data->rx_lock);
-		sys_slist_append(&data->rx_pending, &rx->node);
-		k_spin_unlock(&data->rx_lock, key);
-		hci_ncp_rx_process(dev);
+		k_fifo_put(&data->rx_pending, rx);
+		mfd_silabs_ncp_wq_submit(cfg->parent, &data->rx_work);
 		break;
 	case SL_CPC_EP_EVENT_SEND_DONE:
 		tx = CONTAINER_OF(event->send_done.frame, struct hci_ncp_tx_slot, frame);
@@ -382,7 +414,6 @@ static int hci_ncp_open(const struct device *dev)
 		sl_cpc_ep_push_recv_buf(&data->ep, &slot->buf);
 	}
 
-	sys_slist_init(&data->rx_pending);
 	hci_ncp_rx_freed_dev = dev;
 	bt_buf_rx_freed_cb_set(hci_ncp_rx_freed);
 
@@ -430,6 +461,8 @@ static int hci_ncp_close(const struct device *dev)
 		return -ETIMEDOUT;
 	}
 	sl_cpc_ep_deinit(&data->ep);
+	while (k_fifo_get(&data->rx_pending, K_NO_WAIT) != NULL) {
+	}
 
 	return 0;
 }
@@ -441,7 +474,7 @@ static int hci_ncp_init(const struct device *dev)
 	data->dev = dev;
 	k_sem_init(&data->connected, 0, 1);
 	k_sem_init(&data->closed, 0, 1);
-	sys_slist_init(&data->rx_pending);
+	k_fifo_init(&data->rx_pending);
 	k_work_init(&data->rx_work, hci_ncp_rx_work);
 
 	return 0;
