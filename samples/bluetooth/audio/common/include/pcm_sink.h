@@ -44,6 +44,7 @@ int sample_bt_audio_pcm_sink_init(void);
  *
  * Reprograms the hardware only when the stream parameters changed since the
  * last successful call, so it is cheap to invoke on every stream start.
+ * Full-duplex operation rejects format changes with -EBUSY to preserve capture.
  *
  * @return 0 on success, negative errno otherwise.
  */

@@ -92,4 +92,33 @@ applies mute. Codec volume registers are device-specific, so set
 ``CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_CODEC_VOL_MAX`` to your codec's range in the
 board :file:`.conf` (for example ``0`` and ``127`` for the WM8962 register).
 
+RT1170 audio input and output
+****************************
+
+The revision B Cortex-M7 configuration of :zephyr:board:`mimxrt1170_evk` uses the WM8962
+codec for headphone playback and microphone capture. It retains the board's Bluetooth
+controller configuration; the controller and its firmware must support LE isochronous channels.
+
+Enable the ``liblc3`` west module and build::
+
+   west update liblc3
+   west build -b mimxrt1170_evk@B/mimxrt1176/cm7 samples/bluetooth/audio/tmap_peripheral
+
+The codec supplies the bit and frame clocks. Both I2S directions use 48 kHz stereo PCM,
+including when only the microphone source is streaming. Incoming mono LC3 is duplicated
+to both headphone channels; stereo is played directly. Playback accepts 16, 32, and 48 kHz
+LC3 with 10 ms frames and upsamples lower rates to 48 kHz without changing the capture clocks.
+The microphone source accepts 32 kHz mono LC3 with 10 ms frames. Both directions support
+one frame block per SDU and 30 to 155 octets per LC3 frame.
+
+The onboard microphone is on the right capture channel and is selected by default.
+For the J101 headset microphone, select ``CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_LEFT`` and
+use an OMTP-wired headset. Disable ``CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE`` and
+``CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX`` for playback without capture.
+The automatic call/media control demo is disabled so the peer controls streaming.
+
+The codec is configured once at boot and capture continues between connections,
+discarding PCM when no source stream is active. Playback start, stop, and codec
+reconfiguration do not reprogram the shared audio interface.
+
 See :zephyr:code-sample-category:`bluetooth` samples for details.

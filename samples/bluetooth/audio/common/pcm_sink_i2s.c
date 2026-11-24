@@ -107,6 +107,14 @@ static void codec_lock_give(void)
 	__ASSERT(err == 0, "k_mutex_unlock failed with %d", err);
 }
 
+static void stop_codec_output(void)
+{
+	CODEC_LOCK_ASSERT();
+	if (!IS_ENABLED(CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX)) {
+		audio_codec_stop_output(codec_dev);
+	}
+}
+
 static void apply_volume(void)
 {
 	audio_property_value_t val;
@@ -178,7 +186,9 @@ static int configure_i2s_and_codec(void)
 		.word_size = SAMPLE_BIT_WIDTH,
 		.channels = sink_cfg.channels,
 		.format = I2S_FMT_DATA_FORMAT_I2S,
-		.options = I2S_OPT_BIT_CLK_CONTROLLER | I2S_OPT_FRAME_CLK_CONTROLLER,
+		.options = IS_ENABLED(CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_CODEC_CLOCK_CONTROLLER) ?
+			   I2S_OPT_BIT_CLK_TARGET | I2S_OPT_FRAME_CLK_TARGET :
+			   I2S_OPT_BIT_CLK_CONTROLLER | I2S_OPT_FRAME_CLK_CONTROLLER,
 		.frame_clk_freq = sink_cfg.sample_rate_hz,
 		.mem_slab = &i2s_mem_slab,
 		.block_size = sink_cfg.block_bytes,
@@ -193,12 +203,16 @@ static int configure_i2s_and_codec(void)
 	CODEC_LOCK_ASSERT();
 
 	codec_cfg.mclk_freq = (uint32_t)CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_MCLK_FREQUENCY;
-	codec_cfg.dai_route = AUDIO_ROUTE_PLAYBACK;
+	codec_cfg.dai_route = IS_ENABLED(CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX) ?
+			      AUDIO_ROUTE_PLAYBACK_CAPTURE : AUDIO_ROUTE_PLAYBACK;
 	codec_cfg.dai_type = AUDIO_DAI_TYPE_I2S;
 	codec_cfg.dai_cfg.i2s.word_size = SAMPLE_BIT_WIDTH;
 	codec_cfg.dai_cfg.i2s.channels = sink_cfg.channels;
 	codec_cfg.dai_cfg.i2s.format = I2S_FMT_DATA_FORMAT_I2S;
-	codec_cfg.dai_cfg.i2s.options = I2S_OPT_FRAME_CLK_TARGET | I2S_OPT_BIT_CLK_TARGET;
+	codec_cfg.dai_cfg.i2s.options =
+		IS_ENABLED(CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_CODEC_CLOCK_CONTROLLER) ?
+		I2S_OPT_FRAME_CLK_CONTROLLER | I2S_OPT_BIT_CLK_CONTROLLER :
+		I2S_OPT_FRAME_CLK_TARGET | I2S_OPT_BIT_CLK_TARGET;
 	codec_cfg.dai_cfg.i2s.frame_clk_freq = sink_cfg.sample_rate_hz;
 	codec_cfg.dai_cfg.i2s.mem_slab = &i2s_mem_slab;
 	codec_cfg.dai_cfg.i2s.block_size = sink_cfg.block_bytes;
@@ -251,6 +265,11 @@ int sample_bt_audio_pcm_sink_configure(const struct sample_bt_audio_pcm_sink_cfg
 			     cfg->block_bytes != sink_cfg.block_bytes;
 	int ret;
 
+	if (IS_ENABLED(CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX) &&
+	    atomic_get(&configured) != 0 && changed) {
+		return -EBUSY;
+	}
+
 	if (!changed) {
 		return 0;
 	}
@@ -301,7 +320,7 @@ int sample_bt_audio_pcm_sink_start(void)
 		LOG_DBG("i2s_trigger PREPARE: already READY");
 	} else if (ret != 0) {
 		LOG_DBG("i2s_trigger PREPARE failed: %d", ret);
-		audio_codec_stop_output(codec_dev);
+		stop_codec_output();
 		codec_lock_give();
 		return ret;
 	}
@@ -315,7 +334,7 @@ int sample_bt_audio_pcm_sink_start(void)
 
 		if (wret < 0) {
 			LOG_DBG("silence pre-fill %u failed: %d", i, wret);
-			audio_codec_stop_output(codec_dev);
+			stop_codec_output();
 			codec_lock_give();
 			return wret;
 		}
@@ -324,7 +343,7 @@ int sample_bt_audio_pcm_sink_start(void)
 	ret = i2s_trigger(codec_tx, I2S_DIR_TX, I2S_TRIGGER_START);
 	if (ret != 0) {
 		LOG_DBG("i2s_trigger START failed: %d", ret);
-		audio_codec_stop_output(codec_dev);
+		stop_codec_output();
 		codec_lock_give();
 		return ret;
 	}
@@ -353,7 +372,7 @@ void sample_bt_audio_pcm_sink_stop(void)
 	 * stop_output() gates the DAC would otherwise mute the tail still being clocked out.
 	 */
 	codec_lock_take();
-	audio_codec_stop_output(codec_dev);
+	stop_codec_output();
 	codec_lock_give();
 }
 
