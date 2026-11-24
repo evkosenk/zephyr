@@ -64,6 +64,7 @@ static inline void audio_playback_stop(void)
 {
 }
 #endif
+#include "audio_jack_capture.h"
 #include "tmap_peripheral.h"
 
 static const struct bt_audio_codec_cap lc3_codec_cap =
@@ -186,6 +187,13 @@ static int lc3_config(struct bt_conn *conn, const struct bt_bap_ep *ep, enum bt_
 	printk("ASE Codec Config stream %p\n", *stream);
 
 	if (dir == BT_AUDIO_DIR_SOURCE) {
+		int err = audio_jack_capture_configure(codec_cfg);
+
+		if (err != 0) {
+			*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_CONF_UNSUPPORTED,
+						BT_BAP_ASCS_REASON_CODEC_DATA);
+			return err;
+		}
 		source_streams[configured_source_stream_count].stream = *stream;
 		configured_source_stream_count++;
 	} else {
@@ -375,6 +383,8 @@ static void stream_started(struct bt_bap_stream *stream)
 	if (err == 0 && ep_info.dir == BT_AUDIO_DIR_SINK) {
 		printk("Sink stream started; routing LC3 audio to WM8962\n");
 		audio_playback_start();
+	} else if (err == 0 && ep_info.dir == BT_AUDIO_DIR_SOURCE) {
+		audio_jack_capture_start(stream);
 	}
 }
 
@@ -386,7 +396,14 @@ static void stream_stopped(struct bt_bap_stream *stream, uint8_t reason)
 	ARG_UNUSED(reason);
 	if (err == 0 && ep_info.dir == BT_AUDIO_DIR_SINK) {
 		audio_playback_stop();
+	} else if (err == 0 && ep_info.dir == BT_AUDIO_DIR_SOURCE) {
+		audio_jack_capture_stop(stream);
 	}
+}
+
+static void stream_sent(struct bt_bap_stream *stream)
+{
+	audio_jack_capture_sent(stream);
 }
 
 static void stream_enabled(struct bt_bap_stream *stream)
@@ -413,6 +430,7 @@ static void stream_enabled(struct bt_bap_stream *stream)
 
 static struct bt_bap_stream_ops stream_ops = {
 	.recv = stream_recv,
+	.sent = stream_sent,
 	.enabled = stream_enabled,
 	.started = stream_started,
 	.stopped = stream_stopped,

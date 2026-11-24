@@ -22,6 +22,7 @@
 #include <zephyr/toolchain.h>
 
 #include "audio_playback.h"
+#include "audio_jack_capture.h"
 
 LOG_MODULE_REGISTER(audio_playback, LOG_LEVEL_INF);
 
@@ -156,7 +157,8 @@ int audio_playback_init(void)
 		return -ENODEV;
 	}
 
-	codec_cfg.dai_route = AUDIO_ROUTE_PLAYBACK;
+	codec_cfg.dai_route = IS_ENABLED(CONFIG_TMAP_PERIPHERAL_AUDIO_JACK_MIC) ?
+			      AUDIO_ROUTE_PLAYBACK_CAPTURE : AUDIO_ROUTE_PLAYBACK;
 	codec_cfg.dai_type = AUDIO_DAI_TYPE_I2S;
 	codec_cfg.dai_cfg.i2s.word_size = 16U;
 	codec_cfg.dai_cfg.i2s.channels = AUDIO_CHANNELS;
@@ -185,6 +187,12 @@ int audio_playback_init(void)
 	if (err != 0) {
 		LOG_ERR("SAI configuration failed: %d", err);
 		return err;
+	}
+	if (IS_ENABLED(CONFIG_TMAP_PERIPHERAL_AUDIO_JACK_MIC)) {
+		err = audio_jack_capture_init();
+		if (err != 0) {
+			return err;
+		}
 	}
 
 	k_thread_create(&playback_thread, playback_stack, K_THREAD_STACK_SIZEOF(playback_stack),

@@ -7,6 +7,10 @@
 	chosen {
 		zephyr,bt-hci = &ncp_hci;
 	};
+
+	aliases {
+		i2s-codec-rx = &sai1;
+	};
 };
 
 &lpuart2 {

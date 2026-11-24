@@ -11,6 +11,9 @@ target_sources(app PRIVATE
 )
 
 target_sources_ifdef(CONFIG_AUDIO app PRIVATE src/audio_playback.c)
+target_sources_ifdef(CONFIG_TMAP_PERIPHERAL_AUDIO_JACK_MIC app PRIVATE
+  src/audio_jack_capture.c
+)
 target_sources_ifdef(CONFIG_BT_TBS_CLIENT_GTBS app PRIVATE src/ccp_call_ctrl.c)
 target_sources_ifdef(CONFIG_BT_MCC app PRIVATE src/mcp_ctlr.c)
 

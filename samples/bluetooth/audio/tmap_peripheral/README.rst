@@ -53,4 +53,10 @@ Enable the ``liblc3`` west module and build with the UART transport snippet::
      samples/bluetooth/audio/tmap_peripheral
 
 No external devicetree overlay is required. This configuration supports one
-received LC3 frame per SDU; it does not implement microphone capture.
+received LC3 frame per SDU. With
+``CONFIG_TMAP_PERIPHERAL_AUDIO_JACK_MIC`` enabled, the WM8962 captures 48 kHz
+stereo from SAI1 RX. The EVKB onboard microphone (right channel) or J101
+headset microphone (left channel) can be selected under ``Microphone input for
+LE Audio`` in Kconfig; the onboard microphone is selected by default. The chosen
+channel is encoded as LC3 and sent on the unicast source stream. The sample
+periodically reports both channel peaks. Use an OMTP-wired headset for J101.

@@ -13,6 +13,35 @@ endmenu
 
 menu "Earbuds"
 
+config TMAP_PERIPHERAL_AUDIO_JACK_MIC
+	bool "Send EVKB microphone over LE Audio"
+	depends on AUDIO && I2S
+	help
+	  Capture audio through the WM8962 on SAI1 RX, encode it as LC3 and send it
+	  on the unicast source stream. Select the microphone input below.
+
+if TMAP_PERIPHERAL_AUDIO_JACK_MIC
+
+choice TMAP_PERIPHERAL_AUDIO_JACK_MIC_SOURCE
+	prompt "Microphone input for LE Audio"
+	default TMAP_PERIPHERAL_AUDIO_JACK_MIC_ONBOARD
+	help
+	  Select which WM8962 capture channel to send on the LE Audio source stream.
+
+config TMAP_PERIPHERAL_AUDIO_JACK_MIC_ONBOARD
+	bool "EVKB onboard microphone"
+	help
+	  Send the onboard microphone on the right channel.
+
+config TMAP_PERIPHERAL_AUDIO_JACK_MIC_HEADSET
+	bool "J101 headset microphone"
+	help
+	  Send the headset microphone on the left channel. Use an OMTP-wired headset.
+
+endchoice
+
+endif
+
 config TMAP_PERIPHERAL_SET_RANK
 	int "Device rank in set"
 	depends on TMAP_PERIPHERAL_DUO
