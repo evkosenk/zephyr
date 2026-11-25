@@ -99,6 +99,7 @@ struct shell_stream {
 	struct bt_bap_qos_cfg qos;
 	bool is_tx;
 	bool is_rx;
+	bool external_audio;
 
 #if defined(CONFIG_LIBLC3)
 	uint32_t lc3_freq_hz;

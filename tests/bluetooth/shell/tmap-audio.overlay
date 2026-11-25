@@ -1,0 +1,12 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* Native file-backed duplex wiring; no physical board audio is exercised. */
+/ {
+	aliases {
+		i2s-codec-tx = &i2s_rxtx;
+		i2s-codec-rx = &i2s_rxtx;
+	};
+};

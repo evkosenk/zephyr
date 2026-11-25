@@ -6,6 +6,22 @@ common:
     - bluetooth
 
 tests:
+  bluetooth.shell.tmap_audio.rt1170:
+    build_only: true
+    platform_allow:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    integration_platforms:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    extra_args:
+      - CONF_FILE="prj.conf;tmap-audio.conf"
+      - EXTRA_DTC_OVERLAY_FILE=tmap-audio-rt1170.overlay
+  bluetooth.shell.tmap_audio.native:
+    build_only: true
+    integration_platforms:
+      - native_sim
+    extra_args:
+      - CONF_FILE="prj.conf;tmap-audio.conf"
+      - EXTRA_DTC_OVERLAY_FILE=tmap-audio.overlay
   bluetooth.shell.main:
     extra_configs:
       - CONFIG_UART_NATIVE_PTY_0_ON_STDINOUT=y

@@ -52,6 +52,11 @@ Libraries / Subsystems
 
 * Bluetooth
 
+  * The Bluetooth shell test application supports optional board headphone playback
+    and microphone uplink through the existing ``tmap init`` command.
+    Board wiring and microphone selection are configured with an overlay. See the
+    :doc:`TMAP shell documentation </services/connectivity/bluetooth/shell/audio/tmap>`.
+
   * The :zephyr:code-sample:`ble_peripheral_tmap_peripheral` sample supports
     full-duplex headphone playback and microphone uplink on the RT1170 EVKB.
     Playback and capture share fixed-rate codec clocks, allowing either

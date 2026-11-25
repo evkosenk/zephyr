@@ -55,6 +55,7 @@
 #include <zephyr/toolchain.h>
 
 #include "audio.h"
+#include "bap_audio.h"
 #include "common/bt_shell_private.h"
 #include "host/shell/bt.h"
 
@@ -195,6 +196,49 @@ static const struct named_lc3_preset lc3_broadcast_presets[] = {
 };
 
 static bool initialized;
+static const struct bt_shell_audio_ops *audio_ops;
+static bool audio_ready;
+
+int bt_shell_audio_register(const struct bt_shell_audio_ops *ops)
+{
+	if (initialized) {
+		return -EBUSY;
+	}
+	if (ops != NULL &&
+	    (ops->init == NULL || ops->sink_cap == NULL || ops->source_cap == NULL ||
+	     ops->config == NULL ||
+	     ops->started == NULL || ops->stopped == NULL || ops->recv == NULL)) {
+		return -EINVAL;
+	}
+	if (ops != NULL && audio_ops != NULL) {
+		return -EALREADY;
+	}
+	audio_ops = ops;
+	audio_ready = false;
+	return 0;
+}
+
+int bt_shell_audio_init(void)
+{
+	int err;
+
+	if (audio_ops == NULL || audio_ready) {
+		return 0;
+	}
+	err = audio_ops->init();
+	if (err == 0) {
+		audio_ready = true;
+	}
+	return err;
+}
+
+void bt_shell_audio_volume_changed(uint8_t volume, bool mute)
+{
+	if (audio_ready && audio_ops->volume_changed != NULL) {
+		audio_ops->volume_changed(volume, mute);
+	}
+}
+
 static size_t bap_stats_interval = 1000U;
 
 __maybe_unused static bool should_print_by_stats(size_t counter)
@@ -482,7 +526,7 @@ static void lc3_audio_send_data(struct shell_stream *sh_stream)
 	struct net_buf *buf;
 	int err;
 
-	if (!sh_stream->is_tx || !sh_stream->tx.active) {
+	if (!sh_stream->is_tx || !sh_stream->tx.active || sh_stream->external_audio) {
 		/* TX has been aborted */
 		return;
 	}
@@ -541,6 +585,14 @@ static void lc3_sent_cb(struct bt_bap_stream *bap_stream)
 	struct shell_stream *sh_stream = shell_stream_from_bap_stream(bap_stream);
 
 	if (!sh_stream->is_tx) {
+		return;
+	}
+	if (sh_stream->external_audio) {
+		sh_stream->tx.lc3_sdu_cnt++;
+		if (should_print_by_stats(sh_stream->tx.lc3_sdu_cnt)) {
+			bt_shell_info("[%zu]: stream %p: application audio TX completed",
+				      sh_stream->tx.lc3_sdu_cnt, bap_stream);
+		}
 		return;
 	}
 
@@ -863,6 +915,14 @@ static bool supported_lc3_config_meta(struct bt_conn *conn, enum bt_audio_dir di
 static bool bap_supported_lc3_config_data(enum bt_audio_dir dir,
 					  const struct bt_audio_codec_cfg *codec_cfg)
 {
+	if (audio_ops != NULL) {
+		const struct bt_audio_codec_cap *cap = dir == BT_AUDIO_DIR_SINK ?
+						      audio_ops->sink_cap : audio_ops->source_cap;
+		const enum bt_audio_location location = dir == BT_AUDIO_DIR_SINK ?
+			supported_sink_audio_location : supported_source_audio_location;
+
+		return supported_lc3_config(cap, location, codec_cfg);
+	}
 	const enum bt_audio_location location = dir == BT_AUDIO_DIR_SINK
 							? supported_sink_audio_location
 							: supported_source_audio_location;
@@ -905,6 +965,16 @@ static int lc3_config(struct bt_conn *conn, const struct bt_bap_ep *ep, enum bt_
 
 	bt_shell_print("ASE Codec Config stream %p", *stream);
 
+	if (audio_ops != NULL) {
+		int err = audio_ops->config(dir, codec_cfg);
+
+		if (err != 0) {
+			*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_CONF_UNSUPPORTED,
+					      BT_BAP_ASCS_REASON_CODEC_DATA);
+			return err;
+		}
+	}
+
 	set_unicast_stream(*stream);
 
 	*pref = qos_pref;
@@ -933,6 +1003,16 @@ static int lc3_reconfig(struct bt_bap_stream *stream, enum bt_audio_dir dir,
 
 	if (default_stream == NULL) {
 		set_unicast_stream(stream);
+	}
+
+	if (audio_ops != NULL) {
+		int err = audio_ops->config(dir, codec_cfg);
+
+		if (err != 0) {
+			*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_CONF_UNSUPPORTED,
+					      BT_BAP_ASCS_REASON_CODEC_DATA);
+			return err;
+		}
 	}
 
 	*pref = qos_pref;
@@ -1034,6 +1114,10 @@ static int lc3_qos(struct bt_bap_stream *stream, const struct bt_bap_qos_cfg *qo
 		bt_shell_warn("SDU size larger than necessary (%u > %u)", qos->sdu,
 			      expected_sdu_size);
 		/* Not invalid, just warn */
+	}
+
+	if (audio_ops != NULL && audio_ops->qos != NULL) {
+		return audio_ops->qos(stream, qos, rsp);
 	}
 
 	return 0;
@@ -2876,6 +2960,11 @@ void bap_stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_recv_i
 
 	(void)memcpy(&sh_stream->rx.last_info, info, sizeof(sh_stream->rx.last_info));
 
+	if (sh_stream->external_audio) {
+		audio_ops->recv(stream, info, buf);
+		return;
+	}
+
 #if defined(CONFIG_LIBLC3)
 	if (sh_stream->rx.lc3_decoder != NULL) {
 		const uint8_t frame_blocks_per_sdu = sh_stream->lc3_frame_blocks_per_sdu;
@@ -2994,11 +3083,12 @@ void bap_stream_started_cb(struct bt_bap_stream *bap_stream)
 
 	sh_stream->is_rx = info.can_recv;
 	sh_stream->is_tx = info.can_send;
+	sh_stream->external_audio = audio_ops != NULL && audio_ops->started(bap_stream, &info);
 
 #if defined(CONFIG_LIBLC3)
 	const struct bt_audio_codec_cfg *codec_cfg = bap_stream->codec_cfg;
 
-	if (codec_cfg->id == BT_HCI_CODING_FORMAT_LC3) {
+	if (!sh_stream->external_audio && codec_cfg->id == BT_HCI_CODING_FORMAT_LC3) {
 
 		ret = bt_audio_codec_cfg_get_freq(codec_cfg);
 		if (ret >= 0) {
@@ -3196,6 +3286,11 @@ static void update_usb_streams(struct shell_stream *sh_stream)
 
 static void clear_stream_data(struct shell_stream *sh_stream)
 {
+	if (sh_stream->external_audio) {
+		audio_ops->stopped(bap_stream_from_shell_stream(sh_stream));
+		sh_stream->external_audio = false;
+	}
+
 #if defined(CONFIG_BT_AUDIO_RX)
 	if (sh_stream->is_rx) {
 		rx_streaming_cnt--;
@@ -3654,6 +3749,11 @@ static int cmd_init(const struct shell *sh, size_t argc, char *argv[])
 {
 	int err;
 
+	if (audio_ops != NULL && !audio_ready) {
+		shell_error(sh, "Initialize the board audio backend with tmap init first");
+		return -EACCES;
+	}
+
 	if (initialized) {
 		shell_print(sh, "Already initialized");
 		return -ENOEXEC;
@@ -3679,6 +3779,11 @@ static int cmd_init(const struct shell *sh, size_t argc, char *argv[])
 		static struct bt_pacs_cap cap_source = {
 			.codec_cap = &bap_lc3_codec_cap,
 		};
+
+		if (audio_ops != NULL) {
+			cap_sink.codec_cap = audio_ops->sink_cap;
+			cap_source.codec_cap = audio_ops->source_cap;
+		}
 
 		err = bt_pacs_register(&pacs_param);
 		__ASSERT(err == 0, "Failed to register PACS: %d", err);
@@ -3840,6 +3945,10 @@ static int cmd_send(const struct shell *sh, size_t argc, char *argv[])
 
 		return -ENOEXEC;
 	}
+	if (shell_stream_from_bap_stream(default_stream)->external_audio) {
+		shell_error(sh, "Stream is owned by application audio routing");
+		return -EBUSY;
+	}
 
 	if (argc > 1) {
 		len = hex2bin(argv[1], strlen(argv[1]), data, sizeof(data));
@@ -3880,6 +3989,11 @@ static void start_sine_stream_cb(struct shell_stream *sh_stream, void *user_data
 		struct bt_bap_stream *bap_stream = bap_stream_from_shell_stream(sh_stream);
 		const struct shell *sh = user_data;
 		int err;
+
+		if (sh_stream->external_audio) {
+			shell_error(sh, "Stream is owned by application audio routing");
+			return;
+		}
 
 		err = init_lc3_encoder(sh_stream);
 		if (err != 0) {

@@ -3,6 +3,15 @@
 
 mainmenu "Bluetooth Shell Test Application"
 
+configdefault MAIN_STACK_SIZE
+	default 4096 if TEST_BT_SHELL_TMAP_AUDIO
+
+configdefault SYSTEM_WORKQUEUE_STACK_SIZE
+	default 4096 if TEST_BT_SHELL_TMAP_AUDIO
+
+configdefault SAMPLE_BT_AUDIO_PLAYBACK_CODEC_VOL_MAX
+	default 127 if TEST_BT_SHELL_TMAP_AUDIO && DT_HAS_WOLFSON_WM8962_ENABLED
+
 # LE Audio Controller settings for non-network core devices
 if BT_AUDIO && BT_LL_SW_SPLIT
 
@@ -47,3 +56,19 @@ configdefault BT_CTLR_ISO_TX_SDU_LEN_MAX
 endif # BT_AUDIO && BT_LL_SW_SPLIT
 
 source "Kconfig.zephyr"
+
+rsource "../../../samples/bluetooth/audio/common/Kconfig"
+
+config TEST_BT_SHELL_TMAP_AUDIO
+	bool "TMAP shell board audio input and output"
+	depends on BT_TMAP && BT_BAP_UNICAST_SERVER && LIBLC3
+	depends on SAMPLE_BT_AUDIO_PLAYBACK_SINK_I2S
+	depends on SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX
+	depends on SAMPLE_BT_AUDIO_PLAYBACK_CODEC_CLOCK_CONTROLLER
+	depends on $(dt_alias_enabled,i2s-codec-rx)
+	depends on BT_ASCS_MAX_ASE_SNK_COUNT = 1 && BT_ASCS_MAX_ASE_SRC_COUNT = 1
+	depends on !USBD_AUDIO2_CLASS
+	help
+	  Initialize board audio with tmap init and route a peripheral's
+	  unicast sink to headphones and its source from an I2S microphone.
+	  The codec supplies fixed 48 kHz clocks shared by both directions.

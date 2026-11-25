@@ -27,6 +27,7 @@
 
 #include "host/shell/bt.h"
 #include "common/bt_shell_private.h"
+#include "bap_audio.h"
 
 static struct bt_vcp_included vcp_included;
 
@@ -38,6 +39,9 @@ static void vcp_vol_rend_state_cb(struct bt_conn *conn, int err, uint8_t volume,
 		bt_shell_error("VCP state get failed (%d)", err);
 	} else {
 		bt_shell_print("VCP volume %u, mute %u", volume, mute);
+		if (IS_ENABLED(CONFIG_BT_BAP_STREAM)) {
+			bt_shell_audio_volume_changed(volume, mute != 0U);
+		}
 	}
 }
 

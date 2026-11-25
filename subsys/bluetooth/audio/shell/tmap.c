@@ -23,6 +23,7 @@
 
 #include "host/shell/bt.h"
 #include "common/bt_shell_private.h"
+#include "bap_audio.h"
 
 static int cmd_tmap_init(const struct shell *sh, size_t argc, char **argv)
 {
@@ -37,6 +38,14 @@ static int cmd_tmap_init(const struct shell *sh, size_t argc, char **argv)
 
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
+
+	if (IS_ENABLED(CONFIG_BT_BAP_STREAM)) {
+		err = bt_shell_audio_init();
+		if (err != 0) {
+			shell_error(sh, "Board audio initialization failed (err %d)", err);
+			return err;
+		}
+	}
 
 	shell_info(sh, "Registering TMAS with role: 0x%04X", role);
 

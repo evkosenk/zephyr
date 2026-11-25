@@ -1,0 +1,18 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	zephyr,user {
+		audio-capture-channel = <1>;
+	};
+
+	chosen {
+		zephyr,sram = &sdram0;
+	};
+
+	aliases {
+		i2s-codec-rx = &sai1;
+	};
+};

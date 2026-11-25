@@ -29,6 +29,10 @@ LOG_MODULE_REGISTER(tmap_audio_capture, LOG_LEVEL_INF);
 #define CAPTURE_SAMPLES (CAPTURE_RATE_HZ / 100U)
 #define CAPTURE_BLOCK_SIZE (CAPTURE_SAMPLES * CAPTURE_CHANNELS * sizeof(int16_t))
 #define CAPTURE_BLOCK_COUNT 8U
+#define MIC_CHANNEL DT_PROP_OR(DT_PATH(zephyr_user), audio_capture_channel, \
+			      IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_LEFT) ? 0U : 1U)
+
+BUILD_ASSERT(MIC_CHANNEL < CAPTURE_CHANNELS, "Microphone channel must be left (0) or right (1)");
 
 BUILD_ASSERT(DT_SAME_NODE(DT_ALIAS(i2s_codec_rx), DT_ALIAS(i2s_codec_tx)),
 	     "Capture and playback must share an I2S peripheral");
@@ -62,7 +66,6 @@ static void capture_send(const int16_t *samples)
 	NET_BUF_POOL_FIXED_DEFINE(tx_pool, CONFIG_BT_ISO_TX_BUF_COUNT,
 				  BT_ISO_SDU_BUF_SIZE(AUDIO_CAPTURE_MAX_OCTETS),
 				  CONFIG_BT_CONN_TX_USER_DATA_SIZE, NULL);
-	const size_t channel = IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_LEFT) ? 0U : 1U;
 	struct net_buf *buf;
 	int err;
 
@@ -74,7 +77,7 @@ static void capture_send(const int16_t *samples)
 	}
 
 	net_buf_reserve(buf, BT_ISO_CHAN_SEND_RESERVE);
-	err = lc3_encode(encoder, LC3_PCM_FORMAT_S16, &samples[channel], CAPTURE_CHANNELS,
+	err = lc3_encode(encoder, LC3_PCM_FORMAT_S16, &samples[MIC_CHANNEL], CAPTURE_CHANNELS,
 			 octets_per_frame, net_buf_add(buf, octets_per_frame));
 	if (err == 0) {
 		err = bt_bap_stream_send(tx_stream, buf, seq_num);
