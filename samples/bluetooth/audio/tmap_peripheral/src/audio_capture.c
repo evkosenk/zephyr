@@ -30,6 +30,10 @@ LOG_MODULE_REGISTER(tmap_audio_capture, LOG_LEVEL_INF);
 #define CAPTURE_BLOCK_SIZE (CAPTURE_SAMPLES * CAPTURE_CHANNELS * sizeof(int16_t))
 #define CAPTURE_BLOCK_COUNT 8U
 
+/* RT1170 EVKB microphone slots with the WM8962 driver's default input routing. */
+#define HEADSET_MIC_I2S_SLOT 0U
+#define ONBOARD_MIC_I2S_SLOT 1U
+
 BUILD_ASSERT(DT_SAME_NODE(DT_ALIAS(i2s_codec_rx), DT_ALIAS(i2s_codec_tx)),
 	     "Capture and playback must share an I2S peripheral");
 
@@ -62,7 +66,8 @@ static void capture_send(const int16_t *samples)
 	NET_BUF_POOL_FIXED_DEFINE(tx_pool, CONFIG_BT_ISO_TX_BUF_COUNT,
 				  BT_ISO_SDU_BUF_SIZE(AUDIO_CAPTURE_MAX_OCTETS),
 				  CONFIG_BT_CONN_TX_USER_DATA_SIZE, NULL);
-	const size_t channel = IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_LEFT) ? 0U : 1U;
+	const size_t microphone_slot = IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_HEADSET_MIC) ?
+				      HEADSET_MIC_I2S_SLOT : ONBOARD_MIC_I2S_SLOT;
 	struct net_buf *buf;
 	int err;
 
@@ -74,7 +79,10 @@ static void capture_send(const int16_t *samples)
 	}
 
 	net_buf_reserve(buf, BT_ISO_CHAN_SEND_RESERVE);
-	err = lc3_encode(encoder, LC3_PCM_FORMAT_S16, &samples[channel], CAPTURE_CHANNELS,
+	/* LC3 encodes one microphone, not stereo. The offset selects the input slot;
+	 * the stride skips the other slot in the interleaved I2S capture buffer.
+	 */
+	err = lc3_encode(encoder, LC3_PCM_FORMAT_S16, &samples[microphone_slot], CAPTURE_CHANNELS,
 			 octets_per_frame, net_buf_add(buf, octets_per_frame));
 	if (err == 0) {
 		err = bt_bap_stream_send(tx_stream, buf, seq_num);
@@ -167,6 +175,8 @@ int audio_capture_init(void)
 
 	k_thread_create(&capture_thread, capture_stack, K_THREAD_STACK_SIZEOF(capture_stack),
 			capture_thread_fn, NULL, NULL, NULL, K_PRIO_PREEMPT(6), 0, K_NO_WAIT);
+	LOG_INF("Microphone input: %s; uplink is mono",
+		IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_HEADSET_MIC) ? "headset" : "onboard");
 	return 0;
 }
 

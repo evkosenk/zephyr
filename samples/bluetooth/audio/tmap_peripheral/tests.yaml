@@ -97,4 +97,4 @@ tests:
     integration_platforms:
       - mimxrt1170_evk@B/mimxrt1176/cm7
     extra_configs:
-      - CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_LEFT=y
+      - CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_HEADSET_MIC=y

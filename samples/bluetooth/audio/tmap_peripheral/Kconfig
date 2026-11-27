@@ -38,21 +38,18 @@ menuconfig SAMPLE_TMAP_AUDIO_CAPTURE
 	  10 ms mono LC3 source. Playback and capture share the codec clocks
 	  and use a fixed 48 kHz PCM format. Playback accepts 10 ms frames.
 
-if SAMPLE_TMAP_AUDIO_CAPTURE
+config SAMPLE_TMAP_AUDIO_CAPTURE_HEADSET_MIC
+	bool "Use the headset microphone"
+	depends on SAMPLE_TMAP_AUDIO_CAPTURE
+	help
+	  Select the J101 headset microphone on the RT1170 EVKB. Leave disabled
+	  to use the onboard microphone (the default). Headset selection requires
+	  an OMTP-wired headset and is not changed automatically on insertion.
 
-choice SAMPLE_TMAP_AUDIO_CAPTURE_CHANNEL
-	prompt "Microphone channel"
-	default SAMPLE_TMAP_AUDIO_CAPTURE_RIGHT
-
-config SAMPLE_TMAP_AUDIO_CAPTURE_LEFT
-	bool "Left"
-
-config SAMPLE_TMAP_AUDIO_CAPTURE_RIGHT
-	bool "Right"
-
-endchoice
-
-endif # SAMPLE_TMAP_AUDIO_CAPTURE
+	  The codec delivers the headset microphone in the left I2S slot and
+	  the onboard microphone in the right slot. Only the selected input is
+	  encoded as mono LC3; this does not select a Bluetooth left/right
+	  location or change headphone playback.
 
 config TMAP_PERIPHERAL_SET_RANK
 	int "Device rank in set"

@@ -125,9 +125,26 @@ LC3 with 10 ms frames and upsamples lower rates to 48 kHz without changing the c
 The microphone source accepts 32 kHz mono LC3 with 10 ms frames. Both directions support
 one frame block per SDU and 30 to 155 octets per LC3 frame.
 
-The onboard microphone is on the right capture channel and is selected by default.
-For the J101 headset microphone, select ``CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_LEFT`` and
-use an OMTP-wired headset. Disable ``CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE`` and
+Microphone selection
+====================
+
+The onboard microphone is selected by default. To use an OMTP-wired headset microphone
+connected to J101 instead, add this to an extra configuration file:
+
+.. code-block:: cfg
+
+   CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_HEADSET_MIC=y
+
+Set the option to ``n`` (the default) to use the onboard microphone. Selection is
+build-time; plugging in a headset does not automatically switch the input.
+
+With the WM8962 driver's default routing, headset samples occupy the left I2S slot
+and onboard microphone samples occupy the right slot. The sample encodes only the
+selected microphone as a mono LC3 stream. These slots describe the local codec
+transport, not the Bluetooth stream's left/right location. Both microphone choices
+allow simultaneous headphone playback.
+
+Disable ``CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE`` and
 ``CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX`` for playback without capture.
 The automatic call/media control demo is disabled so the peer controls streaming.
 
