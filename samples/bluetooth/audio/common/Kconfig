@@ -17,6 +17,12 @@ menuconfig SAMPLE_BT_AUDIO_PLAYBACK
 
 if SAMPLE_BT_AUDIO_PLAYBACK
 
+config SAMPLE_BT_AUDIO_PLAYBACK_48KHZ
+	bool "Use a fixed 48 kHz PCM sample rate"
+	help
+	  Upsample 16 and 32 kHz LC3 streams to 48 kHz. This keeps the codec
+	  clocks unchanged when playback shares its audio interface with capture.
+
 choice SAMPLE_BT_AUDIO_PLAYBACK_SINK
 	prompt "LE Audio playback PCM output backend"
 	default SAMPLE_BT_AUDIO_PLAYBACK_SINK_I2S
@@ -72,6 +78,20 @@ config SAMPLE_BT_AUDIO_PLAYBACK_PCM_QUEUE_DEPTH
 	  count.
 
 if SAMPLE_BT_AUDIO_PLAYBACK_SINK_I2S
+
+config SAMPLE_BT_AUDIO_PLAYBACK_CODEC_CLOCK_CONTROLLER
+	bool "Use the codec as the bit and frame clock controller"
+	help
+	  Configure the codec to supply the I2S bit and frame clocks, and the
+	  SoC I2S peripheral to receive them.
+
+config SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX
+	bool "Keep the codec configured for playback and capture"
+	depends on SAMPLE_BT_AUDIO_PLAYBACK_48KHZ
+	help
+	  Enable both codec routes and keep the codec powered when playback
+	  stops. The capture user must configure the shared interface at boot
+	  and use the same PCM format for the lifetime of the application.
 
 config SAMPLE_BT_AUDIO_PLAYBACK_MCLK_FREQUENCY
 	int "Codec MCLK input frequency in Hz"

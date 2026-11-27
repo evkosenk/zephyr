@@ -1,0 +1,13 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Build-only wiring for the shared-peripheral capture and playback paths.
+ */
+
+/ {
+	aliases {
+		i2s-codec-rx = &i2s_rx0;
+		i2s-codec-tx = &i2s_rx0;
+	};
+};

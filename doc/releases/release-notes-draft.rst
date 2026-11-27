@@ -57,6 +57,11 @@ Libraries / Subsystems
 
 * Bluetooth
 
+  * The :zephyr:code-sample:`ble_peripheral_tmap_peripheral` sample supports
+    full-duplex headphone playback and microphone uplink on the RT1170 EVKB.
+    Playback and capture share fixed-rate codec clocks, allowing either
+    LE Audio direction to start and stop independently.
+
   * Added a HID Service server (:kconfig:option:`CONFIG_BT_HIDS`), the service
     the HID Device role of the HID over GATT Profile is built on.
   * :c:func:`bt_addr_matches_irk` is now public, so a scanner can check whether a
