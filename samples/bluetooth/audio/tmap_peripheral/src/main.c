@@ -36,6 +36,7 @@
 
 #include <audio_playback.h>
 #include "tmap_peripheral.h"
+#include "audio_capture.h"
 
 /* Advertised and registered TMAP role mask derived from Kconfig. */
 #define TMAP_PERIPHERAL_ROLE_MASK ( \
@@ -409,6 +410,14 @@ int main(void)
 			return err;
 		}
 		printk("LE Audio playback initialized\n");
+	}
+
+	if (IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE)) {
+		err = audio_capture_init();
+		if (err != 0) {
+			printk("LE Audio capture init failed (err %d)\n", err);
+			return err;
+		}
 	}
 
 	err = bt_le_ext_adv_create(BT_BAP_ADV_PARAM_CONN_QUICK, &adv_cb, &adv);

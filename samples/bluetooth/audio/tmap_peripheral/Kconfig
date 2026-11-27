@@ -26,6 +26,31 @@ endmenu
 
 menu "Earbuds"
 
+menuconfig SAMPLE_TMAP_AUDIO_CAPTURE
+	bool "Send I2S microphone audio on the unicast source"
+	depends on SAMPLE_BT_AUDIO_PLAYBACK_SINK_I2S
+	depends on SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX
+	depends on SAMPLE_BT_AUDIO_PLAYBACK_CODEC_CLOCK_CONTROLLER
+	depends on $(dt_alias_enabled,i2s-codec-rx)
+	depends on BT_ASCS_MAX_ASE_SRC_COUNT = 1
+	help
+	  Capture 48 kHz stereo PCM and encode one input channel as a 32 kHz,
+	  10 ms mono LC3 source. Playback and capture share the codec clocks
+	  and use a fixed 48 kHz PCM format. Playback accepts 10 ms frames.
+
+config SAMPLE_TMAP_AUDIO_CAPTURE_HEADSET_MIC
+	bool "Use the headset microphone"
+	depends on SAMPLE_TMAP_AUDIO_CAPTURE
+	help
+	  Select the J101 headset microphone on the RT1170 EVKB. Leave disabled
+	  to use the onboard microphone (the default). Headset selection requires
+	  an OMTP-wired headset and is not changed automatically on insertion.
+
+	  The codec delivers the headset microphone in the left I2S slot and
+	  the onboard microphone in the right slot. Only the selected input is
+	  encoded as mono LC3; this does not select a Bluetooth left/right
+	  location or change headphone playback.
+
 config TMAP_PERIPHERAL_SET_RANK
 	int "Device rank in set"
 	depends on TMAP_PERIPHERAL_DUO

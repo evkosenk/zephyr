@@ -92,4 +92,64 @@ applies mute. Codec volume registers are device-specific, so set
 ``CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_CODEC_VOL_MAX`` to your codec's range in the
 board :file:`.conf` (for example ``0`` and ``127`` for the WM8962 register).
 
+RT1170 audio input and output
+****************************
+
+The revision B Cortex-M7 configuration of :zephyr:board:`mimxrt1170_evk` uses the WM8962
+codec for headphone playback and microphone capture. It retains the board's Bluetooth
+controller configuration; the controller and its firmware must support LE isochronous channels.
+
+Enable the ``liblc3`` west module and build::
+
+   west update liblc3
+   west build -b mimxrt1170_evk/mimxrt1176/cm7 samples/bluetooth/audio/tmap_peripheral
+
+Revision B is the default. The board provides both ``i2s-codec-rx`` and
+``i2s-codec-tx`` aliases; no sample audio overlay is needed.
+
+An external Bluetooth controller can be selected using a controller snippet or an
+additional devicetree overlay. It must set ``zephyr,bt-hci`` to the external HCI device,
+disable the unused default HCI device, and configure its transport and flow control.
+The audio configuration does not depend on the controller vendor or HCI transport.
+
+Silicon Labs NCP over UART/CPC additionally requires the NCP driver and
+``silabs-ncp-uart`` snippet from the controller integration. The snippet must provide
+RT1170 UART wiring, or that wiring must be supplied as an extra overlay. The controller
+firmware must support both ISO reception and transmission; selecting the snippet alone
+does not add those capabilities.
+
+The codec supplies the bit and frame clocks. Both I2S directions use 48 kHz stereo PCM,
+including when only the microphone source is streaming. Incoming mono LC3 is duplicated
+to both headphone channels; stereo is played directly. Playback accepts 16, 32, and 48 kHz
+LC3 with 10 ms frames and upsamples lower rates to 48 kHz without changing the capture clocks.
+The microphone source accepts 32 kHz mono LC3 with 10 ms frames. Both directions support
+one frame block per SDU and 30 to 155 octets per LC3 frame.
+
+Microphone selection
+====================
+
+The onboard microphone is selected by default. To use an OMTP-wired headset microphone
+connected to J101 instead, add this to an extra configuration file:
+
+.. code-block:: cfg
+
+   CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_HEADSET_MIC=y
+
+Set the option to ``n`` (the default) to use the onboard microphone. Selection is
+build-time; plugging in a headset does not automatically switch the input.
+
+With the WM8962 driver's default routing, headset samples occupy the left I2S slot
+and onboard microphone samples occupy the right slot. The sample encodes only the
+selected microphone as a mono LC3 stream. These slots describe the local codec
+transport, not the Bluetooth stream's left/right location. Both microphone choices
+allow simultaneous headphone playback.
+
+Disable ``CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE`` and
+``CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX`` for playback without capture.
+The automatic call/media control demo is disabled so the peer controls streaming.
+
+The codec is configured once at boot and capture continues between connections,
+discarding PCM when no source stream is active. Playback start, stop, and codec
+reconfiguration do not reprogram the shared audio interface.
+
 See :zephyr:code-sample-category:`bluetooth` samples for details.

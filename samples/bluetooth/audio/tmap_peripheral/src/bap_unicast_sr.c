@@ -37,6 +37,7 @@
 #include <zephyr/toolchain.h>
 
 #include <audio_playback.h>
+#include "audio_capture.h"
 #include "tmap_peripheral.h"
 
 /* Track the currently-configured sink stream so we can route stream_recv()
@@ -95,6 +96,9 @@ static int extract_sink_pcm_cfg(const struct bt_audio_codec_cfg *codec_cfg,
 	if (out->frame_duration_us != 7500U && out->frame_duration_us != 10000U) {
 		return -ENOTSUP;
 	}
+	if (IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE) && out->frame_duration_us != 10000U) {
+		return -ENOTSUP;
+	}
 	if (out->octets_per_frame < 30U || out->octets_per_frame > 155U) {
 		return -ENOTSUP;
 	}
@@ -114,9 +118,15 @@ static int extract_sink_pcm_cfg(const struct bt_audio_codec_cfg *codec_cfg,
 static const struct bt_audio_codec_cap lc3_codec_cap = BT_AUDIO_CODEC_CAP_LC3(
 	BT_AUDIO_CODEC_CAP_FREQ_16KHZ | BT_AUDIO_CODEC_CAP_FREQ_32KHZ |
 		BT_AUDIO_CODEC_CAP_FREQ_48KHZ,
-	BT_AUDIO_CODEC_CAP_DURATION_7_5 | BT_AUDIO_CODEC_CAP_DURATION_10,
-	BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(2), SUPPORTED_FRAME_SIZE_MIN,
+	(IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE) ? BT_AUDIO_CODEC_CAP_DURATION_10 :
+	 BT_AUDIO_CODEC_CAP_DURATION_7_5 | BT_AUDIO_CODEC_CAP_DURATION_10),
+	BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(1U, 2U), SUPPORTED_FRAME_SIZE_MIN,
 	SUPPORTED_FRAME_SIZE_MAX, 1u, (AVAILABLE_SINK_CONTEXT | AVAILABLE_SOURCE_CONTEXT));
+
+static const struct bt_audio_codec_cap capture_codec_cap = BT_AUDIO_CODEC_CAP_LC3(
+	BT_AUDIO_CODEC_CAP_FREQ_32KHZ, BT_AUDIO_CODEC_CAP_DURATION_10,
+	BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(1U), SUPPORTED_FRAME_SIZE_MIN,
+	AUDIO_CAPTURE_MAX_OCTETS, 1U, AVAILABLE_SOURCE_CONTEXT);
 
 static struct bt_conn *default_conn;
 static struct bt_bap_stream streams[CONFIG_BT_ASCS_MAX_ASE_SNK_COUNT +
@@ -249,8 +259,17 @@ static int lc3_config(struct bt_conn *conn, const struct bt_bap_ep *ep, enum bt_
 	}
 
 	if (dir == BT_AUDIO_DIR_SOURCE) {
-		source_streams[configured_source_stream_count].stream = *stream;
-		configured_source_stream_count++;
+		if (IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE)) {
+			ext = audio_capture_configure(codec_cfg);
+			if (ext != 0) {
+				*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_CONF_UNSUPPORTED,
+						      BT_BAP_ASCS_REASON_CODEC_DATA);
+				return ext;
+			}
+		} else {
+			source_streams[configured_source_stream_count].stream = *stream;
+			configured_source_stream_count++;
+		}
 	}
 
 	*pref = qos_pref;
@@ -267,6 +286,15 @@ static int lc3_reconfig(struct bt_bap_stream *stream, enum bt_audio_dir dir,
 
 	printk("ASE Codec Reconfig: stream %p\n", stream);
 	print_codec_cfg(codec_cfg);
+
+	if (IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE) && dir == BT_AUDIO_DIR_SOURCE) {
+		ext = audio_capture_configure(codec_cfg);
+		if (ext != 0) {
+			*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_CONF_UNSUPPORTED,
+					      BT_BAP_ASCS_REASON_CODEC_DATA);
+			return ext;
+		}
+	}
 
 	/* Refresh the cached PCM format so a later start uses the reconfigured
 	 * frame size/rate instead of the one captured at initial lc3_config().
@@ -295,7 +323,27 @@ static int lc3_reconfig(struct bt_bap_stream *stream, enum bt_audio_dir dir,
 static int lc3_qos(struct bt_bap_stream *stream, const struct bt_bap_qos_cfg *qos,
 		   struct bt_bap_ascs_rsp *rsp)
 {
-	ARG_UNUSED(rsp);
+	if (IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE)) {
+		struct bt_bap_ep_info info;
+		int err = bt_bap_ep_get_info(stream->ep, &info);
+
+		if (err != 0) {
+			return err;
+		}
+		if (info.dir == BT_AUDIO_DIR_SOURCE) {
+			if (qos->interval != 10000U) {
+				*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_CONF_UNSUPPORTED,
+						      BT_BAP_ASCS_REASON_INTERVAL);
+				return -ENOTSUP;
+			}
+			if (qos->sdu <
+			    bt_audio_codec_cfg_get_octets_per_frame(stream->codec_cfg)) {
+				*rsp = BT_BAP_ASCS_RSP(BT_BAP_ASCS_RSP_CODE_CONF_UNSUPPORTED,
+						      BT_BAP_ASCS_REASON_SDU);
+				return -ENOTSUP;
+			}
+		}
+	}
 
 	printk("QoS: stream %p qos %p\n", stream, qos);
 
@@ -475,6 +523,14 @@ static void stream_started_cb(struct bt_bap_stream *stream)
 			printk("sample_bt_audio_playback_start submit failed: %d\n", pret);
 		}
 	}
+	if (IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE)) {
+		struct bt_bap_ep_info info;
+
+		if (bt_bap_ep_get_info(stream->ep, &info) == 0 &&
+		    info.dir == BT_AUDIO_DIR_SOURCE) {
+			audio_capture_start(stream);
+		}
+	}
 }
 
 /* Playback is stopped only here: stopped fires whenever the sink stream leaves the
@@ -483,6 +539,9 @@ static void stream_started_cb(struct bt_bap_stream *stream)
 static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 {
 	ARG_UNUSED(reason);
+	if (IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE)) {
+		audio_capture_stop(stream);
+	}
 	if (IS_ENABLED(CONFIG_SAMPLE_BT_AUDIO_PLAYBACK) && stream == sink_stream) {
 		sample_bt_audio_playback_stop();
 	}
@@ -491,6 +550,9 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 /* Runs after stopped, also on ACL disconnect, so the stream is forgotten only once idle. */
 static void stream_released_cb(struct bt_bap_stream *stream)
 {
+	if (IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE)) {
+		audio_capture_stop(stream);
+	}
 	if (stream == sink_stream) {
 		sink_stream = NULL;
 	}
@@ -535,6 +597,11 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 
 static struct bt_pacs_cap cap = {
 	.codec_cap = &lc3_codec_cap,
+};
+
+static struct bt_pacs_cap source_cap = {
+	.codec_cap = IS_ENABLED(CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE) ?
+		     &capture_codec_cap : &lc3_codec_cap,
 };
 
 
@@ -607,7 +674,7 @@ int bap_unicast_sr_init(void)
 
 	if (IS_ENABLED(CONFIG_BT_PAC_SRC)) {
 		/* Register CT required capabilities */
-		err = bt_pacs_cap_register(BT_AUDIO_DIR_SOURCE, &cap);
+		err = bt_pacs_cap_register(BT_AUDIO_DIR_SOURCE, &source_cap);
 		if (err != 0) {
 			printk("Could not register source capability (err %d)\n", err);
 			return err;

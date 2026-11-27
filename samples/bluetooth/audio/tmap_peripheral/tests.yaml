@@ -59,3 +59,42 @@ tests:
     extra_configs:
       - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK=y
       - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_SINK_NONE=y
+  sample.bluetooth.audio.tmap_peripheral.rt1170.playback:
+    build_only: true
+    platform_allow:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    integration_platforms:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    extra_configs:
+      - CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE=n
+      - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX=n
+  sample.bluetooth.audio.tmap_peripheral.duplex:
+    build_only: true
+    platform_allow:
+      - native_sim
+    extra_args: EXTRA_DTC_OVERLAY_FILE="duplex.overlay"
+    extra_configs:
+      - CONFIG_FPU=y
+      - CONFIG_LIBLC3=y
+      - CONFIG_I2S=y
+      - CONFIG_AUDIO=y
+      - CONFIG_AUDIO_CODEC=y
+      - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_SINK_I2S=y
+      - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_48KHZ=y
+      - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_CODEC_CLOCK_CONTROLLER=y
+      - CONFIG_SAMPLE_BT_AUDIO_PLAYBACK_FULL_DUPLEX=y
+      - CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE=y
+  sample.bluetooth.audio.tmap_peripheral.rt1170.duplex:
+    build_only: true
+    platform_allow:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    integration_platforms:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+  sample.bluetooth.audio.tmap_peripheral.rt1170.headset:
+    build_only: true
+    platform_allow:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    integration_platforms:
+      - mimxrt1170_evk@B/mimxrt1176/cm7
+    extra_configs:
+      - CONFIG_SAMPLE_TMAP_AUDIO_CAPTURE_HEADSET_MIC=y
