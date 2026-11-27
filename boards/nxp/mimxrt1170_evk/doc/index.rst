@@ -200,6 +200,25 @@ The MIMXRT1170 SoC has six pairs of pinmux/gpio controllers.
 | GPIO_DISP_B2_13           | LPUART1_RTS_B  | M.2 BT HCI       |
 +---------------------------+----------------+------------------+
 
+Audio codec
+===========
+
+On revision B, the Cortex-M7 board configuration provides the WM8962 codec as
+``audio_codec``. The ``i2s-codec-rx`` and ``i2s-codec-tx`` aliases both refer to SAI1,
+which carries microphone capture and headphone playback. Applications enable
+``CONFIG_I2S``, ``CONFIG_AUDIO``, and ``CONFIG_AUDIO_CODEC`` and configure the codec
+with ``AUDIO_ROUTE_PLAYBACK_CAPTURE`` for bidirectional audio.
+
+Both directions share the audio clocks. Configure compatible sample rates, word
+sizes, channel counts, and clock roles before starting either direction. The
+:zephyr:code-sample:`i2s-echo` sample demonstrates codec capture and playback without
+a Bluetooth controller.
+
+The :zephyr:code-sample:`bluetooth_handsfree` sample uses SAI1 for the local codec
+and a separate SAI3 PCM interface for voice data exchanged with its Bluetooth
+controller. This controller PCM interface is not part of the codec wiring and
+is not required for applications transporting audio over HCI.
+
 Dual Core samples
 *****************
 

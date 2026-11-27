@@ -10,7 +10,6 @@
 	};
 
 	aliases {
-		i2s-codec-rx = &sai1;
 		pcm-rxtx = &sai3;
 	};
 };
